@@ -1,0 +1,26 @@
+<!--
+     Copyright 2014, NICTA
+
+     This software may be distributed and modified according to the terms of
+     the BSD 2-Clause license. Note that NO WARRANTY is provided.
+     See "LICENSE_BSD2.txt" for details.
+
+     @TAG(NICTA_BSD)
+  -->
+
+<layout deadline="1000000" runtime="700000">
+  <segment name="seg1" size="1024" />
+  <segment name="seg2" size="1024" />
+  <segment name="seg3" size="4096" />
+
+  <cell name="cell1" program="prog1" user="root" scheduleRate="40">
+    <use-segment name="seg1" alias="input" privileges="ro" />
+    <use-segment name="seg2" alias="output" privileges="wo" />
+  </cell>
+
+  <cell name="cell2" program="prog2" user="root" scheduleRate="60">
+    <use-segment name="seg1" alias="output" privileges="wo" />
+    <use-segment name="seg2" alias="input" privileges="ro" />
+    <use-segment name="seg3" alias="misc" privileges="rw" />
+  </cell>
+</layout>

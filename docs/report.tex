@@ -1,0 +1,289 @@
+%
+% Copyright 2014, NICTA
+%
+% This software may be distributed and modified according to the terms of
+% the BSD 2-Clause license. Note that NO WARRANTY is provided.
+% See "LICENSE_BSD2.txt" for details.
+%
+% @TAG(NICTA_BSD)
+%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% For technical reports, manuals etc:
+%  - use ``report''
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[a4paper,11pt,twoside]{report}
+\usepackage[colour,nictaonly]{disy}
+
+%%% $Id: paper.tex,v 1.22 2008-07-19 08:14:55 gernot Exp $
+
+% Setting this to true turns on the ``draft'' watermark
+\newif \ifDraft         \Drafttrue
+
+%%% Hyperlinks embed links for references in the PDF output (both for
+%%% internal as well as external links).
+\newif \ifhyperlinks    \hyperlinkstrue
+%%% When using this you should use \autoref{label} instead of
+%%% Section~\ref{label}. This will make ``Section'' part of the link, not
+%%% just the number.
+
+% Easy control over page margins. You can use ``right'', ``top'', ...
+\usepackage[margin=25mm]{geometry}
+%\usepackage[margin=25mm,left=33mm]{geometry}	% better for double-sided reports
+
+\usepackage{graphicx}
+\setkeys{Gin}{keepaspectratio=true,clip=true,draft=false,width=\linewidth}
+\graphicspath{{./imgs/}}
+\usepackage{times,cite,url,fancyhdr}
+\urlstyle{rm}
+\renewcommand{\ttdefault}{cmtt}	% CM rather than courier for \tt
+
+\ifDraft
+  \usepackage{draftcopy}
+  \newcommand{\Comment}[1]{\textbf{\textsl{#1}}}
+  \newcommand{\FIXME}[1]{\textbf{\textsl{FIXME: #1}}}
+  \date{\small$\relax$Id: paper.tex,v 1.22 2008-07-19 08:14:55 gernot Exp $\relax$}
+\else
+  \newcommand{\Comment}[1]{\relax}
+  \newcommand{\FIXME}[1]{\relax}
+  \date{}
+\fi
+
+\ifhyperlinks
+  \usepackage[pdftex,pagebackref,hyperindex,bookmarks]{hyperref}
+  \hypersetup{linktocpage} %,colorlinks}
+\else   
+  \providecommand{\href}[2]{\url{#2}}
+\fi
+
+\pagestyle{fancyplain}
+\lhead[\fancyplain{}{\sl\thepage}]{\fancyplain{}{\sl\rightmark}}
+\chead{}
+\rhead[\fancyplain{}{\sl\leftmark}]{\fancyplain{}{\sl\thepage}}
+\lfoot[\fancyplain{\sl\thepage}{}]{}
+\cfoot{\ifDraft\textsf{NICTA Confidential}\fi}
+\rfoot[]{\fancyplain{\sl\thepage}{}}
+
+\newcommand{\skcapdl}{SK-CapDL}
+\newcommand{\skentity}[1]{\emph{#1}}
+\newcommand{\term}[1]{{\it #1}}
+\newcommand{\code}[1]{\\[+4pt]
+{{\tt \hphantom{    } #1}}\\[+4pt]
+}
+\newcommand{\todo}[1]{{\bf \emph{TODO: #1}}}
+\usepackage{listings}
+\lstset{language=C,keywordstyle=\bf,morekeywords={size_t,off_t},basicstyle=\ttfamily\small}
+
+\begin{document}
+
+  \ifhyperlinks
+    %% Capitalisation of cross references
+    \renewcommand{\chapterautorefname}{Chapter}
+    \renewcommand{\sectionautorefname}{Section}
+    \renewcommand{\subsectionautorefname}{Section}
+    \renewcommand{\subsubsectionautorefname}{Section}
+    \renewcommand{\appendixautorefname}{Appendix}
+    \renewcommand{\Hfootnoteautorefname}{Footnote}
+    %% Commands for index
+    \newcommand{\Htextbf}[1]{\textbf{\hyperpage{#1}}}
+  \fi
+
+  \title{\skcapdl~Manual}
+
+  \author{Matthew Fernandez, Gerwin Klein}
+  \AuthorEmail{matthew.fernandez@nicta.com.au}
+  \date{March 2013}
+
+  \maketitle
+  \urlstyle{sf}
+  \thispagestyle{empty}
+
+  \begin{abstract}
+    \pagenumbering{roman}
+This document describes the usage of a tool for generating CapDL
+\cite{Kuz_KLW_10} and code stubs for building separation kernel systems on
+seL4 \cite{Klein_EHACDEEKNSTW_09}.
+It was developed as part of a collaboration with \href{http://corp.galois.com/}{Galois Inc}.
+
+    \vfill
+
+    \noindent
+    \copyright~2013 NICTA
+  \end{abstract}
+  \setcounter{page}{1}
+
+
+  \tableofcontents
+
+  \cleardoublepage
+  \setcounter{page}{1}
+  \pagenumbering{arabic}
+
+  \chapter{\label{s:build}Building \skcapdl}
+The instructions in this section assume your environment is Ubuntu Linux.
+Steps should work on any Linux or Mac OS machine with minimal changes.
+
+  \section{\label{sec:dependencies}Dependencies}
+The \skcapdl~tool is written in Haskell, so you will need a Haskell compiler
+in order to build it.
+We recommend the Glasgow Haskell Compiler \cite{GHC}.
+To install this, run:
+\code{
+    sudo apt-get install ghc
+}
+Several extra libraries are required, which are available through Cabal, the
+Haskell package manager.
+To install Cabal, run:
+\code{
+    sudo apt-get install cabal
+}
+The libraries required are MissingH, elf and xml. To install these:
+\code{
+    cabal install MissingH
+
+    cabal install elf
+
+    cabal install xml
+}
+
+  \section{\label{sec:compilation}Compilation}
+The source code for the tool itself is in the directory {\tt src}.
+Compile it using the make command:
+\code{
+    cd src
+
+    make
+}
+
+  \chapter{\label{s:usage}Usage}
+The \skcapdl~tool is designed to run in three phases generating three distinct
+outputs:
+\begin{enumerate}
+  \item Stub code generation, during which C source and header files are
+    generated;
+  \item Policy generation, during which a CapDL specification for initialising
+    the system is generated; and
+  \item Scheduler configuration generation, during which a domain schedule for
+    the kernel is generated.
+\end{enumerate}
+Which of these phases is run is determined by the {\tt --output} command-line
+argument.
+
+  \section{\label{sec:input}Input Specification}
+The input to the \skcapdl~tool is an XML specification describing the
+separation configuration of the system.
+This specification describes the scheduling constraints of the system, as well
+as shared memory regions (referred to as \term{segments}) and their mappings to
+accessible regions within the cells.
+
+An example specification of a simple system is the following:
+\vspace{6pt}
+{\lstset{language=xml,frame=single,keywordstyle=\bf,basicstyle=\ttfamily\small,morekeywords={cell,layout,use,segment}}\lstinputlisting{sk-example.xml}}
+\vspace{6pt}
+This describes three segments, \skentity{seg1}, \skentity{seg2} and
+\skentity{seg3}, of sizes 1024, 1024 and
+4096 bytes respectively.
+There are two cells in this system, \skentity{cell1} and \skentity{cell2}.
+In the context of \skentity{cell1}, \skentity{seg1} is accessible read-only as a
+symbol and functions parameterised by the alias \skentity{input}.
+This segment is accessible in the context of \skentity{cell2} as a write-only
+region parameterised by the alias \skentity{output}.
+Conversely the segment \skentity{seg2} is accessible write-only to
+\skentity{cell1} with the alias \skentity{output} and read-only to
+\skentity{cell2} with the alias \skentity{input}.
+The final segment \skentity{seg3} is accessible for reading and writing by
+\skentity{cell2} with the alias \skentity{misc}.
+
+A generalised specification has a single layout element, but can contain an
+arbitrary number of segments and cells.
+It is expected to conform to the following XML schema:
+\vspace{6pt}
+{\lstset{language=xml,frame=single,basicstyle=\ttfamily\small}\lstinputlisting{sk-schema.xsd}}
+
+  \section{\label{sec:codegen}Code Generation}
+Given an XML specification, {\tt spec.xml} the tool can be executed as follows
+to generate source code stubs for a cell, \skentity{cell1}:
+\code{
+    sk-capdl --xml spec.xml --output source --cell cell1
+}
+This generates a source file named ``cell1\_driver.c''.
+This file provide an entry point, {\tt main}, and functions for accessing
+each segment available to \skentity{cell1}.
+To generate a header for including in other C files change the option passed to
+{\tt --output}:
+\code{
+    sk-capdl --xml spec.xml --output header --cell cell1
+}
+This generates a header file named ``cell1\_driver.h''.
+
+For the example specification shown previously, the following functions are
+generated for the region \skentity{input} in \skentity{cell1}:
+\begin{lstlisting}
+    size_t region_input_size(void);
+    int region_input_read(void *dest, size_t size, off_t offset);
+    int region_input_write(void *src, size_t size, off_t offset);
+    void *region_input_base(void);
+\end{lstlisting}
+In general, generated
+source and header files will have the names ``{\it name}\_driver.c'' and
+``{\it name}\_driver.h'', where {\it name} is the cell's name.
+
+  \section{\label{sec:capdlgen}CapDL Generation}
+Once the user sources and the code generated by the above process have been
+compiled and linked into an ELF image, \skcapdl~can be used to generate a CapDL
+specification of the system.
+To do this, run the tool as previously, but pass the ELF files for each cell as
+command-line arguments as well as a different {\tt --output} option:
+\code{
+    sk-capdl --xml spec.xml --output capdl --elf cell1.bin --elf cell2.bin ...
+}
+This generates a single file, spec.cdl, describing the object and capability
+configuration necessary to instantiate the system.
+
+  \section{\label{sec:configgen}Scheduler Configuration Generation}
+The kernel's scheduler needs a schedule describing how the various domains of
+the system are to be scheduled. This is generated from the \skentity{runtime}
+and \skentity{scheduleRate} attributes in the XML input. To generate a concrete
+schedule, the tool also needs to be informed how many time slices occur
+per-second, which is done with the {\tt --tick} option:
+\code{
+    sk-capdl --xml spec.xml --output config --tick 1000
+}
+This generates a file config.c describing the scheduling policy:
+\begin{lstlisting}
+#include <object/structures.h>
+#include <model/statedata.h>
+
+const dschedule_t ksDomSchedule[] = {
+    { .domain = 0, .length = 280},
+    { .domain = 1, .length = 420},
+};
+
+const unsigned int ksDomScheduleLength
+    = sizeof(ksDomSchedule) / sizeof(dschedule_t);
+\end{lstlisting}
+This file is compiled into the kernel at build time to parameterise the
+scheduler.
+
+Note that it is assumed that each cell maps to a single domain. It is also
+important to note that the initialiser that boots the system shares the first
+domain in the schedule with the first cell. The initialiser suspends itself
+after completion, so should not interfere with the remaining schedule once it
+has finished booting the system.
+
+  \section{\label{sec:extraopts}Other Options}
+The \skcapdl~tool has some further command-line arguments for selecting a particular target architecture and for debugging.
+To see usage information for these run:
+\code{
+    sk-capdl --help
+}
+
+  \chapter{\label{s:init}Initialising the System}
+To initialise a system constructed as described, the ELF files for the cells need to be linked into a final image with the CapDL initialiser, a root task designed to instantiate a CapDL specification as a running system on seL4.
+For details on how to perform this process refer to the CapDL initialiser documentation.
+
+  \cleardoublepage
+  \bibliographystyle{alpha}
+  \bibliography{references}
+
+\end{document}

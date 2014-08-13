@@ -1,0 +1,59 @@
+/*
+ * Copyright 2014, NICTA
+ *
+ * This software may be distributed and modified according to the terms of
+ * the BSD 2-Clause license. Note that NO WARRANTY is provided.
+ * See "LICENSE_BSD2.txt" for details.
+ *
+ * @TAG(NICTA_BSD)
+ */
+
+/*
+ * Example of a generated CapDL description from the input separation spec.
+ * Author: Matthew Fernandez
+ *
+ * This is only a partial CapDL description of a system. It represents the
+ * objects and caps that correspond to the input spec, but not the other
+ * necessary elements of the full system.
+ */
+
+arch arm11
+
+objects {
+    frame_seg1 = frame (4k) -- segment seg1
+    frame_seg2 = frame (4k) -- segment seg2
+    frame_seg3 = frame (4k) -- segment seg3
+
+    -- cell 1
+    pd_cell1 = pd
+    pt_cell1 = pt
+
+    -- cell 2
+    pd_cell2 = pd
+    pt_cell2 = pt
+}
+
+caps {
+    -- cell 1
+    pd_cell1 {
+        0: pt_cell1
+    }
+    pt_cell1 {
+        0x10: frame_seg1 (R) -- input
+        0x11: frame_seg2 (W) -- output
+    }
+
+    -- cell 2
+    pd_cell2 {
+        0: pt_cell2
+    }
+    pt_cell2 {
+        /* Although the shared frames, frame_seg1 and frame_seg2, are mapped at
+         * the same address in both address spaces in this example, there is no
+         * need for this to be so.
+         */
+        0x10: frame_seg1 (W)  -- output
+        0x11: frame_seg2 (R)  -- input
+        0x12: frame_seg2 (RW) -- misc
+    }
+}
