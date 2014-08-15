@@ -29,6 +29,11 @@ import Objects
 toCapDLPages :: (String, Elf) -> [SpecObject] -> [SpecObject] -> [Frame] -> M.Map Integer CapDL.Cap
 toCapDLPages = toCapDLPages' 0
 
+computePhysAddr :: Maybe Integer -> Integer -> Maybe Integer
+computePhysAddr paddr_opt frame_index =
+  case paddr_opt of Just p -> Just (p + frame_index * 4096)
+                    Nothing -> Nothing
+
 toCapDLPages' :: Integer -> (String, Elf) -> [SpecObject] -> [SpecObject] -> [Frame] -> M.Map Integer CapDL.Cap
 toCapDLPages' _ _ _ _ [] = M.empty
 toCapDLPages' index (name, elf) segs use_segs ((Frame vaddr r w x):xs) =
@@ -38,7 +43,7 @@ toCapDLPages' index (name, elf) segs use_segs ((Frame vaddr r w x):xs) =
             -- Shared frame (note that we will actually create shared frames
             -- multiple times, but ignore this for now because they will be
             -- merged later):
-        Just (segment_name, frame_index) -> M.insert vaddr y $ toCapDLPages' index (name, elf) segs use_segs xs
+        Just (segment_name, paddr_opt, frame_index) -> M.insert vaddr y $ toCapDLPages' index (name, elf) segs use_segs xs
             where
                     -- Retrieve the use-segment entry for this cell that
                     -- matches the segment backing the shared frame:
@@ -50,11 +55,11 @@ toCapDLPages' index (name, elf) segs use_segs ((Frame vaddr r w x):xs) =
                 r' = useseg_read use_seg
                 w' = useseg_write use_seg
                 x' = False
-                y = CapDL.PageCap (CapDL.Frame $ "shared_frame_" ++ segment_name ++ "_" ++ (show frame_index)) r' w' x'
+                y = CapDL.PageCap (CapDL.Frame ("shared_frame_" ++ segment_name ++ "_" ++ (show frame_index)) (computePhysAddr paddr_opt frame_index)) r' w' x'
             -- Dedicated frame:
         Nothing -> M.insert vaddr y $ toCapDLPages' (index + 1) (name, elf) segs use_segs xs
             where
-                y = CapDL.PageCap (CapDL.Frame $ "frame_" ++ name ++ "_" ++ (show index)) r w x
+                y = CapDL.PageCap (CapDL.Frame ("frame_" ++ name ++ "_" ++ (show index)) Nothing) r w x
 
 -- |Create the cap to a single PT from a PT index and map of pages.
 getPT :: Arch -> String -> Integer -> M.Map Integer CapDL.Cap -> CapDL.Cap

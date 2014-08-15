@@ -102,11 +102,12 @@ symbolAddress elf sym = fromIntegral $ steValue $ the $ filter (\x -> case (snd 
 {- |A page within a cell's address space can map either a shared or a dedicated
     frame. This can be determined by looking at the 'segment' and relevant
     'use-segment' information from the input specification. This function maps
-    a given virtual address (of the start of a page) to a shared region name and
-    index pair (recall that a shared region can occupy more than one frame) or
-    Nothing in the event that this address maps a dedicated frame.
+    a given virtual address (of the start of a page) to a shared region name,
+    optional physical address and index triple (recall that a shared region 
+    can occupy more than one frame) or Nothing in the event that this address 
+    maps a dedicated frame.
 -}
-lookupFrame :: Elf -> [SpecObject] -> [SpecObject] -> Integer -> Maybe (String, Integer)
+lookupFrame :: Elf -> [SpecObject] -> [SpecObject] -> Integer -> Maybe (String, Maybe Integer, Integer)
 lookupFrame _ _ [] _ = Nothing
 lookupFrame elf segs (x:xs) vaddr =
     assert (all isSegment segs) $
@@ -116,7 +117,7 @@ lookupFrame elf segs (x:xs) vaddr =
     let sym_addr = symbolAddress elf (useseg_alias x)
     if (vaddr >= sym_addr && vaddr < sym_addr + (seg_size seg))
             -- The current segment covers this frame.
-        then Just (seg_name seg, (vaddr - sym_addr) `div` page_size)
+        then Just (seg_name seg, seg_paddr seg, (vaddr - sym_addr) `div` page_size)
             -- The current segment and this frame are distinct.
         else lookupFrame elf segs xs vaddr
 

@@ -22,7 +22,8 @@ import Utils
 data SpecObject =
     Segment {
         seg_name :: String,
-        seg_size :: Integer
+        seg_size :: Integer,
+        seg_paddr :: Maybe Integer
     } -- Backed by one or more frames.
     | Cell {
         cell_name :: String,

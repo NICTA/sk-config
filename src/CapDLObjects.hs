@@ -28,7 +28,8 @@ data Object =
             -- Note, we don't support non-empty CNodes.
     }
     | Frame { -- Frame of physical memory
-        frame_name :: String
+        frame_name :: String,
+        frame_paddr :: Maybe Integer
     }
     | PD { -- Page directory
         pd_name :: String,
@@ -51,14 +52,17 @@ data Object =
     }
 instance Eq Object where
     CNode n1 == CNode n2 = n1 == n2
-    Frame n1 == Frame n2 = n1 == n2
+    Frame n1 popt1 == Frame n2 popt2 = n1 == n2
     PD n1 _ == PD n2 _ = n1 == n2
     PT n1 _ == PT n2 _ = n1 == n2
     TCB n1 _ _ _ _ _ == TCB n2 _ _ _ _ _ = n1 == n2
     _ == _ = False
 instance Show Object where
     show (CNode name) = name ++ " = cnode (4 bits)" -- Assume 4 bit CNodes
-    show (Frame name) = name ++ " = frame (4k)" -- Assume 4K frames
+    show (Frame name popt) = name ++ " = frame (4k" ++ 
+            (case popt of Just p -> ", paddr: 0x" ++ (showHex p) 
+                          Nothing -> "") 
+            ++ ")" -- Assume 4K frames
     show (PD name _) = name ++ " = pd"
     show (PT name _) = name ++ " = pt"
     show (TCB name ip sp elf _ _) = name ++ " = tcb (addr: 0x0, ip: 0x" ++

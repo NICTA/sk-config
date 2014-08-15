@@ -31,6 +31,8 @@ import Control.Exception (assert)
 import System.IO
 import Text.XML.Light -- xml
 
+import qualified Numeric (readHex)
+
 import Objects
 
 -- |Read XML content from a file.
@@ -82,9 +84,18 @@ getJustAttr elem name = case (getAttr elem name) of
 
 -- Generator-specific functions:
 
+readHexStr :: String -> Maybe Integer
+readHexStr s = 
+  let str = (if take 2 s == "0x" then drop 2 s else s) in
+    (case Numeric.readHex str of (i,bla):rs -> if bla == "" && rs == [] then Just i else Nothing
+                                 [] -> Nothing)
+
 parseSegment :: Element -> SpecObject
 parseSegment e = assert (elName e == qname "segment")
-    Segment (getJustAttr e "name") (read $ getJustAttr e "size")
+    Segment (getJustAttr e "name") (read $ getJustAttr e "size") 
+            (case (getAttr e "paddr") of 
+                Nothing -> Nothing
+                Just s -> readHexStr s)
 
 parseUseSegment :: Element -> SpecObject
 parseUseSegment e = assert (elName e == qname "use-segment")
