@@ -55,11 +55,14 @@ toCapDLPages' index (name, elf) segs use_segs ((Frame vaddr r w x):xs) =
                 r' = useseg_read use_seg
                 w' = useseg_write use_seg
                 x' = False
-                y = CapDL.PageCap (CapDL.Frame ("shared_frame_" ++ segment_name ++ "_" ++ (show frame_index)) (computePhysAddr paddr_opt frame_index)) r' w' x'
+                paddr_opt' = computePhysAddr paddr_opt frame_index
+                uncached = (case paddr_opt of Nothing -> False
+                                              _ -> True)
+                y = CapDL.PageCap (CapDL.Frame ("shared_frame_" ++ segment_name ++ "_" ++ (show frame_index)) paddr_opt') r' w' x' uncached
             -- Dedicated frame:
         Nothing -> M.insert vaddr y $ toCapDLPages' (index + 1) (name, elf) segs use_segs xs
             where
-                y = CapDL.PageCap (CapDL.Frame ("frame_" ++ name ++ "_" ++ (show index)) Nothing) r w x
+                y = CapDL.PageCap (CapDL.Frame ("frame_" ++ name ++ "_" ++ (show index)) Nothing) r w x False
 
 -- |Create the cap to a single PT from a PT index and map of pages.
 getPT :: Arch -> String -> Integer -> M.Map Integer CapDL.Cap -> CapDL.Cap

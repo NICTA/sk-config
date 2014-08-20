@@ -116,7 +116,8 @@ data Cap =
         p_obj     :: Object,
         p_read    :: Bool,
         p_write   :: Bool,
-        p_execute :: Bool
+        p_execute :: Bool,
+        p_uncached  :: Bool
     }
     | PTCap { -- Page table
         pt_obj :: Object
@@ -126,14 +127,14 @@ data Cap =
     }
 instance Show Cap where
     show (CNodeCap obj) = cnode_name obj ++ " (guard: 0, guard_size: 28)" -- Assume some sensible guard
-    show (PageCap obj r w x) = frame_name obj ++ " (" ++ (r ? "R" $ "") ++ (w ? "W" $ "") ++ (x ? "X" $ "") ++ ")"
+    show (PageCap obj r w x uc) = frame_name obj ++ " (" ++ (r ? "R" $ "") ++ (w ? "W" $ "") ++ (x ? "X" $ "") ++  (uc ? ", uncached" $ "") ++ ")"
     show (PTCap obj) = pt_name obj
     show (PDCap obj) = pd_name obj
 
 -- |Retrieve the object that a capability points to.
 getObj :: Cap -> Object
 getObj (CNodeCap obj) = obj
-getObj (PageCap obj _ _ _) = obj
+getObj (PageCap obj _ _ _ _) = obj
 getObj (PTCap obj) = obj
 getObj (PDCap obj) = obj
 
