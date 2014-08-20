@@ -46,6 +46,7 @@ data Object =
         tcb_ip     :: Integer, -- Starting instruction pointer
         tcb_sp     :: Integer, -- Starting stack pointer
         tcb_elf    :: String, -- Name of associated image
+        tcb_domain :: Int,
         tcb_vspace :: Cap,
         tcb_cspace :: Cap
     }
@@ -54,16 +55,16 @@ instance Eq Object where
     Frame n1 == Frame n2 = n1 == n2
     PD n1 _ == PD n2 _ = n1 == n2
     PT n1 _ == PT n2 _ = n1 == n2
-    TCB n1 _ _ _ _ _ == TCB n2 _ _ _ _ _ = n1 == n2
+    TCB n1 _ _ _ _ _ _ == TCB n2 _ _ _ _ _ _ = n1 == n2
     _ == _ = False
 instance Show Object where
     show (CNode name) = name ++ " = cnode (4 bits)" -- Assume 4 bit CNodes
     show (Frame name) = name ++ " = frame (4k)" -- Assume 4K frames
     show (PD name _) = name ++ " = pd"
     show (PT name _) = name ++ " = pt"
-    show (TCB name ip sp elf _ _) = name ++ " = tcb (addr: 0x0, ip: 0x" ++
+    show (TCB name ip sp elf dom _ _) = name ++ " = tcb (addr: 0x0, ip: 0x" ++
         (showHex ip) ++ ", sp: 0x" ++ (showHex sp) ++ ", elf: " ++ elf ++
-        ", prio: 125)"
+        ", dom: " ++ (show dom) ++ ", prio: 125)"
         -- Note, for the systems we are targeting the user makes no syscalls
         -- and hence requires no IPC buffer. Also priority is irrelevant as
         -- each thread is in a domain by itself.
@@ -82,7 +83,7 @@ showCaps arch (PT name pages) =
     unlines $ (name ++ " {") :
         (foldWithKey (\vaddr cap acc -> acc ++ ["0x" ++ (showHex $ pageIndex arch vaddr) ++ ": " ++ (show cap)]) [] pages) ++
         ["}"]
-showCaps _ (TCB name _ _ _ vspace cspace) =
+showCaps _ (TCB name _ _ _ _ vspace cspace) =
     unlines $ (name ++ " {") :
         ("vspace: " ++ (show vspace)) :
         ("cspace: " ++ (show cspace)) :
@@ -180,7 +181,7 @@ isPDCap _ = False
 getChildren :: Object -> Map Integer Cap
 getChildren (PD _ children) = children
 getChildren (PT _ children) = children
-getChildren (TCB _ _ _ _ vspace cspace) = fromList $ (0, vspace) : [(1, cspace)]
+getChildren (TCB _ _ _ _ _ vspace cspace) = fromList $ (0, vspace) : [(1, cspace)]
 getChildren _ = error "getChildren called on non-container object"
 capCount :: [Object] -> Int
 capCount xs = foldl (\acc y -> acc + (length $ elems $ getChildren y)) 0 $ filter isContainer xs
