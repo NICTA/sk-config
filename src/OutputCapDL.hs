@@ -86,8 +86,8 @@ getPD prefix pts =
  -  system are derivable from this because every cap must be contained in an
  -  object.
  -}
-toCapDL :: Arch -> (String, Elf) -> [SpecObject] -> [SpecObject] -> [Frame] -> [CapDL.Object]
-toCapDL arch (name, elf) segments use_segments frames =
+toCapDL :: Arch -> (String, Elf, Int) -> [SpecObject] -> [SpecObject] -> [Frame] -> [CapDL.Object]
+toCapDL arch (name, elf, domain) segments use_segments frames =
     assert (all isSegment segments) $
     assert (all isUseSegment use_segments) $
     objs
@@ -97,7 +97,7 @@ toCapDL arch (name, elf) segments use_segments frames =
             pts = getPTs arch name pages
             pd = getPD name pts
             cspace = CapDL.CNodeCap $ CapDL.CNode $ "cnode_" ++ name
-            tcb = CapDL.TCB ("tcb_" ++ name) (entryPoint elf) (stackPointer elf) name pd cspace
+            tcb = CapDL.TCB ("tcb_" ++ name) (entryPoint elf) (stackPointer elf) name domain pd cspace
             caps = cspace : M.elems pages ++ M.elems pts ++ [pd]
             objs = tcb : map CapDL.getObj caps
 

@@ -16,6 +16,8 @@ import System.Console.GetOpt
 import System.Environment (getArgs, getProgName)
 import System.IO
 import System.IO.Unsafe (unsafePerformIO)
+import Data.List (elemIndex)
+import Data.Maybe (fromJust)
 import qualified Data.Map as M
 import qualified Data.List as L (nub, sort)
 
@@ -99,9 +101,10 @@ writeCapDL arch spec elfs cells segments debug =
     objs <- mapM (\x ->
             let name = cell_name x
                 use_segments = cell_segs x
+                domain = fromJust (elemIndex x cells)
             in do
                 elf <- elfs M.! name
-                return $ toCapDL arch (name, elf) segments use_segments $ getFrames elf) cells
+                return $ toCapDL arch (name, elf, domain) segments use_segments $ getFrames elf) cells
 
     debugPutStrLn debug ((show $ length objs) ++ " collections of caps and objects derived.")
     mapM_ (\x -> debugPutStrLn debug (" (" ++ (show $ length x) ++ " objects, " ++ (show $ CapDL.capCount x) ++ " caps)")) objs
