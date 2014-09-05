@@ -29,18 +29,27 @@ prototypes use_seg = assert (isUseSegment use_seg) $
         where
             alias = useseg_alias use_seg
 
+fromChanProto :: SpecObject -> String
+fromChanProto (Channel name _ _ _ _ _) = unlines ["write_channel_p " ++ name ++ ";"]
+
+toChanProto :: SpecObject-> String
+toChanProto (Channel name _ _ _ _ _) = unlines ["read_channel_p " ++ name ++ ";"]
+
 -- |The contents of a C header for a given cell.
-showHeader :: String -> [SpecObject] -> String
-showHeader cell_name use_segs = assert (all isUseSegment use_segs) $ indent 0 $
+showHeader :: String -> [SpecObject] -> [SpecObject] -> String
+showHeader cell_name use_segs channels = assert (all isUseSegment use_segs) $ indent 0 $
     unlines (["#ifndef _" ++ (map toUpper cell_name) ++ "_DRIVER_H_",
         "#define _" ++ (map toUpper cell_name) ++ "_DRIVER_H_",
         "",
         "#include <stddef.h>",
         "#include <sys/types.h>",
+        "#include <channels.h>",
         "",
         "int cell_main(int argc, char **argv);",
         ""] ++
         (map prototypes use_segs) ++
+        (map fromChanProto (fromChannels cell_name channels)) ++
+        (map toChanProto (toChannels cell_name channels)) ++
         ["",
         "#endif /* !_" ++ (map toUpper cell_name) ++ "_DRIVER_H_ */"])
 
@@ -81,15 +90,39 @@ regionBase region_name =
         "return (void*)" ++ region_name ++ ";",
         "}"]
 
+fromChanInits c@(Channel name _ _ msgsize slots overwrite) = unlines([
+    "static struct write_channel " ++ sname ++ ";",
+    name ++ " = write_channel(&" ++ sname ++ ", " ++ buf ++ ", " ++ read ++ ", " ++ write ++ ", " ++ (show msgsize) ++ ", " ++ (show slots) ++ ", " ++ (makeOverwrite overwrite) ++ ");"])
+    where
+        makeOverwrite True = "CHAN_ALLOW_OVERWRITES"
+        makeOverwrite False = "CHAN_NO_OVERWRITES"
+        sname = "channel_" ++ name ++ "_mem"
+        makemem seg = "(struct mem){.base = region_" ++ seg ++ "_base(), .size = region_" ++ seg ++ "_size()}"
+        buf = makemem (channelBufferSegmentName c)
+        read = makemem (channelReaderSegmentName c)
+        write = makemem (channelWriterSegmentName c)
+
+toChanInits c@(Channel name _ _ msgsize slots _) = unlines([
+    "static struct read_channel " ++ sname ++ ";",
+    name ++ " = read_channel(&" ++ sname ++ ", " ++ buf ++ ", " ++ read ++ ", " ++ write ++ ", " ++ (show msgsize) ++ ", " ++ (show slots) ++ ");"])
+    where
+        sname = "channel_" ++ name ++ "_mem"
+        makemem seg = "(struct mem){.base = region_" ++ seg ++ "_base(), .size = region_" ++ seg ++ "_size()}"
+        buf = makemem (channelBufferSegmentName c)
+        read = makemem (channelReaderSegmentName c)
+        write = makemem (channelWriterSegmentName c)
+
 {- |A stub main function to call the user's main. On Linux some setup needs to
  -  be done so a stub function is generated to do this then calls the user's
  -  main. On seL4 we don't need to do any setup before the user's code runs.
  -}
-mainStub :: String
-mainStub =
-    "int main(int argc, char **argv) {\n" ++
-    "return cell_main(argc, argv);\n" ++
-    "}"
+mainStub :: String -> [SpecObject] -> String
+mainStub cell_name channels =
+    unlines (["int main(int argc, char **argv) {"] ++
+    map fromChanInits (fromChannels cell_name channels) ++
+    map toChanInits (toChannels cell_name channels) ++
+    ["return cell_main(argc, argv);",
+    "}"])
 
 -- |Return all functions for a given region.
 functions :: SpecObject -> SpecObject -> String
@@ -106,8 +139,8 @@ functions use_seg seg = assert (isUseSegment use_seg) $ assert (isSegment seg) $
             size = seg_size seg
 
 -- |The contents of a C source file for a given cell.
-showSource :: String -> [SpecObject] -> [SpecObject] -> String
-showSource cell use_segs segs = assert (all isUseSegment use_segs) $ assert (all isSegment segs) $ indent 0 $
+showSource :: String -> [SpecObject] -> [SpecObject] -> [SpecObject] -> String
+showSource cell use_segs segs channels = assert (all isUseSegment use_segs) $ assert (all isSegment segs) $ indent 0 $
     unlines ["#include <string.h>",
         "#include \"" ++ cell ++ "_driver.h\"",
         "",
@@ -122,6 +155,6 @@ showSource cell use_segs segs = assert (all isUseSegment use_segs) $ assert (all
         "",
         stack,
         "",
-        mainStub,
+        mainStub cell channels,
         "",
         unlines $ map (\x -> functions x (toSegment x segs)) use_segs]

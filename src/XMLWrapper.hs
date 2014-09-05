@@ -23,6 +23,7 @@ module XMLWrapper (readXML,
                    getChild,
                    getJustChild,
                    getChildren,
+                   parseChannel,
                    parseSegment,
                    parseUseSegment,
                    parseCell) where
@@ -81,6 +82,14 @@ getJustAttr elem name = case (getAttr elem name) of
     Nothing -> error ("Attribute " ++ name ++ " not found")
 
 -- Generator-specific functions:
+
+parseChannel :: Element -> SpecObject
+parseChannel e = assert (elName e == qname "channel")
+    Channel (getJustAttr e "name")
+        (getJustAttr e "from") (getJustAttr e "to")
+        (read $ getJustAttr e "msgsize")
+        (read $ getJustAttr e "slots")
+        ((getJustAttr e "overwrite") `elem` ["yes", "1", "true"])
 
 parseSegment :: Element -> SpecObject
 parseSegment e = assert (elName e == qname "segment")
