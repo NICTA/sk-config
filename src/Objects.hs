@@ -30,6 +30,14 @@ data SpecObject =
         cell_rate :: Integer,
         cell_segs :: [SpecObject]
     } -- A component (single ELF file).
+    | Channel {
+        name :: String,
+        cell_from :: String,
+        cell_to   :: String,
+        msgsize :: Integer,
+        slots :: Integer,
+        overwrite :: Bool
+    }
     | UseSegment {
         useseg_name :: String,
         useseg_alias :: String,
@@ -53,3 +61,21 @@ isSegment _ = False
 toSegment :: SpecObject -> [SpecObject] -> SpecObject
 toSegment x segs = assert (isUseSegment x && all isSegment segs)
     head $ filter (\y -> useseg_name x == seg_name y) segs
+
+-- Naming and helps for channels
+chanSegName :: SpecObject -> String -> String
+chanSegName (Channel name _ _ _ _ _ ) b = "channel_" ++ name ++ "_" ++ b ++ "_segment"
+
+channelBufferSegmentName :: SpecObject -> String
+channelBufferSegmentName c = chanSegName c "buffer"
+
+channelReaderSegmentName :: SpecObject -> String
+channelReaderSegmentName c = chanSegName c "reader"
+
+channelWriterSegmentName :: SpecObject -> String
+channelWriterSegmentName c = chanSegName c "writer"
+
+fromChannels :: String -> [SpecObject] -> [SpecObject]
+fromChannels from_name channels = filter(\(Channel _ from _ _ _ _) -> from == from_name) channels
+toChannels :: String -> [SpecObject] -> [SpecObject]
+toChannels to_name channels = filter(\(Channel _ _ to _ _ _) -> to == to_name) channels

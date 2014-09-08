@@ -78,17 +78,17 @@ parseArgs = do
                 else opts
 
 -- |Write C source.
-writeC :: SpecObject -> [SpecObject] -> Bool -> IO()
-writeC cell segments debug =
+writeC :: SpecObject -> [SpecObject] -> [SpecObject] -> Bool -> IO()
+writeC cell channels segments debug =
     assert (all isSegment segments) $ do
         debugPutStrLn debug ("Writing " ++ (cell_name cell) ++ "_driver.c")
-        writeFile ((cell_name cell) ++ "_driver.c") (showSource (cell_name cell) (cell_segs cell) segments)
+        writeFile ((cell_name cell) ++ "_driver.c") (showSource (cell_name cell) (cell_segs cell) segments channels)
 
 -- |Write C header.
-writeH :: SpecObject -> Bool -> IO()
-writeH cell debug = do
+writeH :: SpecObject -> [SpecObject] -> Bool -> IO()
+writeH cell channels debug = do
     debugPutStrLn debug ("Writing " ++ (cell_name cell) ++ "_driver.h")
-    writeFile ((cell_name cell) ++ "_driver.h") (showHeader (cell_name cell) (cell_segs cell))
+    writeFile ((cell_name cell) ++ "_driver.h") (showHeader (cell_name cell) (cell_segs cell) channels)
 
 -- |Write CapDL spec.
 writeCapDL :: Arch -> Options -> M.Map String (IO Elf) -> [SpecObject] -> [SpecObject] -> Bool -> IO()
@@ -120,6 +120,30 @@ writeConfig tick layout cells =
     writeFile "config.c" (showConfig (fromIntegral tick) (fromIntegral runtime) cells)
     where
         runtime = read $ getJustAttr layout "runtime"
+
+makeChannelSegments :: SpecObject -> [SpecObject]
+makeChannelSegments c@(Channel _ _ _ msgsize slots _) =
+    [buffer_segment, reader_segment, writer_segment]
+    where
+        buffer_size = msgsize * slots
+        buffer_segment = Segment (channelBufferSegmentName c) buffer_size Nothing
+        reader_segment = Segment (channelReaderSegmentName c) 4 Nothing
+        writer_segment = Segment (channelWriterSegmentName c) 4 Nothing
+
+addChannelUseSegments :: [SpecObject] -> SpecObject -> SpecObject
+addChannelUseSegments channels (Cell name rate usesegs) =
+    Cell name rate (usesegs ++ (segments True) ++ (segments False))
+    where
+        channels' :: Bool -> [SpecObject]
+        channels' True = fromChannels name channels
+        channels' False = toChannels name channels
+        channelSeg name read write = UseSegment name name read write
+        bufSeg from channel = channelSeg (channelBufferSegmentName channel) (not from) from
+        writeSeg from channel = channelSeg (channelWriterSegmentName channel) (not from) from
+        readerSeg from channel = channelSeg (channelReaderSegmentName channel) from (not from)
+        allSegs :: Bool -> [SpecObject -> SpecObject]
+        allSegs from = [bufSeg from, writeSeg from, readerSeg from]
+        segments from = concatMap (\c -> map (\s -> s c) (allSegs from)) (channels' from)
 
 main = do
 
@@ -153,10 +177,17 @@ main = do
     xml <- readXML $ opt_filename inputSpec
 
     let layout = getJustElement (getRoot xml) "layout"
-    let segments = map parseSegment (getElements layout "segment")
-    debugPutStrLn debug ((show $ length segments) ++ " segments parsed.")
-    let cells = map parseCell (getElements layout "cell")
-    debugPutStrLn debug ((show $ length cells) ++ " cells parsed.")
+    let channels = map parseChannel (getElements layout "channel")
+    debugPutStrLn debug ((show $ length channels) ++ " channels parsed.")
+    let xmlsegments = map parseSegment (getElements layout "segment")
+    debugPutStrLn debug ((show $ length xmlsegments) ++ " segments parsed.")
+    let xmlcells = map parseCell (getElements layout "cell")
+    debugPutStrLn debug ((show $ length xmlcells) ++ " cells parsed.")
+    -- Add the implicit channel segments to the explicit segments in the xml
+    let segments = xmlsegments ++ concatMap makeChannelSegments channels
+    debugPutStrLn debug ((show $ length segments) ++ " actual segments.")
+    -- Add the implicit channel connections to the cells
+    let cells = map (addChannelUseSegments channels) xmlcells
 
     -- Parse ELF input files into a (Map <cellname>::String <file>::Elf).
     let elfs = M.fromList $ map ((\x -> (fileName x, openElf x)) . opt_filename) $ filter (\x -> case x of
@@ -250,8 +281,8 @@ main = do
                 [x] -> x
                 _ -> error ("multiple definitions of cell \"" ++ name ++ "\" found")
         if output == "source" then
-            writeC cell segments debug
+            writeC cell channels segments debug
         else if output == "header" then
-            writeH cell debug
+            writeH cell channels debug
         else
             error ("invalid --output option \"" ++ output ++ "\" specified")
