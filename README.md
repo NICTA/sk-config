@@ -17,6 +17,7 @@ separation kernel specification to CapDL.
 * examples/ &mdash; An example of the input and output spec.
 * src/ &mdash; The source code of the tool itself.
 * libsk/ &mdash; A subset of the libsk library (license at libsk/LICENSE)
+* libskc/ &mdash; Just the subset of libc needed by libsk
 
 The expected workflow is for the user to specify a separation kernel
 configuration using the XML input specification (described in the Galois
