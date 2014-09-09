@@ -1,178 +1,221 @@
-/*
- * Copyright 2014, NICTA
- *
- * This software may be distributed and modified according to the terms of
- * the BSD 2-Clause license. Note that NO WARRANTY is provided.
- * See "LICENSE_BSD2.txt" for details.
- *
- * @TAG(NICTA_BSD)
- */
+/* 
+Copyright (c)2013, Galois, Inc.
 
-#include <sk/channels.h>
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following
+      disclaimer in the documentation and/or other materials provided
+      with the distribution.
+
+    * Neither the name of Jonathan Daugherty nor the names of other
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+This material is based upon work supported by the Government under
+Contract No. W15P7T-11-C-H209.
+*/
+
 #include <string.h>
+#include <channels.h>
 
-/* We deviate from the libsk notes here by using 4 bytes instead of 1 as
- * per-message book-keeping. We need to do this because we have no 1 byte CAS
- * on the KZM.
- */
-typedef uintptr_t lock_t;
-enum {
-    FREE = 0,
-    USED = 1,
-    INFLUX = 2,
-};
+#define dprintf(...) do{}while(0)
 
-static int cas(lock_t *ptr, lock_t old, lock_t new) {
-    return __sync_bool_compare_and_swap(ptr, old, new);
-}
+// The amount of memory required for the specified message size / slot
+// count.
+#define REQUIRED_SIZE(msg_size, num_slots) \
+    (msg_size * num_slots)
 
-typedef struct {
-    lock_t occupied;
-    char data[1]; /* We abuse this member to memcpy data. */
-} slot_t;
-typedef char slot_t_packed[__builtin_offsetof(slot_t, data)
-    == sizeof(lock_t) ? 1 : -1];
+write_channel_p write_channel(write_channel_p chan, struct mem messages, struct mem reader_meta,
+			      struct mem writer_meta, size_t msg_size,
+			      size_t num_slots, int allow_overwrites) {
 
-struct channel {
-    void *base;
-    size_t msg_size;
-    unsigned msg_count;
-    channel_type_t type;
-};
+    dprintf("Creating new write channel\n");
 
-static slot_t *get_slot(channel_p chan, unsigned int index) {
-    assert(chan != NULL);
-    return (slot_t*)(chan->base + (sizeof(lock_t) + chan->msg_size) * index);
-}
-
-channel_p channel_new(void *base, size_t region_size, size_t msg_size,
-        unsigned msg_count, channel_type_t type) {
-
-    if (msg_count == 0) {
-        /* Channel has zero capacity. */
+    if (num_slots <= 0) {
+	dprintf("num_slots invalid\n");
         return NULL;
     }
 
-    if (region_size < (msg_size + sizeof(lock_t)) * msg_count) {
-        /* Region is not enough to accomodate channel capacity. */
-        /* FIXME: The libsk docs omit any discussion of aligned accesses, which
-         * they get away with because they use a byte for book-keeping. We need
-         * to ensure accesses to the book-keeping (lock_t) are word-aligned and
-         * hence need to factor in an extra fudge factor here.
-         */
+    if (messages.size < REQUIRED_SIZE(msg_size, num_slots)) {
+	dprintf("message buffer size (%z bytes) less than required size (%z bytes)\n",
+		messages.size, REQUIRED_SIZE(msg_size, num_slots));
         return NULL;
     }
 
-    if (type != CHANNEL_TYPE_SEND && type != CHANNEL_TYPE_RECV) {
-        /* Channel type invalid. */
-        return NULL;
-    }
+    // XXX check metadata sizes
 
-    channel_p chan = (channel_p)malloc(sizeof(struct channel));
-    if (chan == NULL) {
-        return NULL;
-    }
-    memset(chan, 0, sizeof(*chan));
-    chan->base = base;
-    chan->msg_size = msg_size;
-    chan->msg_count = msg_count;
-    chan->type = type;
+    chan->ch.slots = messages;
+    chan->ch.reader_metadata = reader_meta;
+    chan->ch.writer_metadata = writer_meta;
+    chan->ch.message_size = msg_size;
+    chan->ch.num_slots = num_slots;
+
+    chan->last_written = writer_meta.base;
+    *chan->last_written = -1;
+    chan->num_written = writer_meta.base + sizeof(*chan->last_written);
+    *chan->num_written = 0;
+
+    chan->last_read = reader_meta.base;
+    chan->num_read = reader_meta.base + sizeof(*chan->last_read);
+
+    dprintf("New write channel: base %p, size %z, msg size %z, slots %z.\n",
+	    messages.base, messages.size, msg_size, num_slots);
+
     return chan;
 }
 
-/* FIXME: The libsk docs don't describe a destructor, but we leak memory if we
- * don't provide one.
+read_channel_p read_channel(read_channel_p chan, struct mem messages, struct mem reader_meta,
+			    struct mem writer_meta, size_t msg_size,
+			    size_t num_slots) {
+
+    dprintf("Creating new read channel\n");
+
+    if (num_slots <= 0) {
+	dprintf("num_slots invalid\n");
+        return NULL;
+    }
+
+    if (messages.size < REQUIRED_SIZE(msg_size, num_slots)) {
+	dprintf("message buffer size (%ld bytes) less than required size (%ld bytes)\n",
+		messages.size, REQUIRED_SIZE(msg_size, num_slots));
+        return NULL;
+    }
+
+    // XXX check metadata sizes
+
+    chan->ch.slots = messages;
+    chan->ch.reader_metadata = reader_meta;
+    chan->ch.writer_metadata = writer_meta;
+    chan->ch.message_size = msg_size;
+    chan->ch.num_slots = num_slots;
+
+    chan->last_read = reader_meta.base;
+    *(chan->last_read) = -1;
+    chan->num_read = reader_meta.base + sizeof(*chan->last_read);
+    *chan->num_read = 0;
+
+    chan->last_written = writer_meta.base;
+    chan->num_written = writer_meta.base + sizeof(*chan->last_written);
+
+    dprintf("New read channel: base %p, size %ld, msg size %ld, slots %ld.\n",
+	    messages.base, messages.size, msg_size, num_slots);
+
+    return chan;
+}
+
+/*
+ * Get the pointer to the message address for the specified channel
+ * and slot.
  */
+static void * channel_slot_ptr(struct channel_base *chan, int slot) {
+    if (chan == NULL)
+        return NULL;
 
-static int try_send(channel_p chan, void *msg) {
-    assert(chan != NULL);
-    assert(chan->type == CHANNEL_TYPE_SEND);
+    if (slot < 0 || slot >= chan->num_slots)
+        return NULL;
 
-    for (int i = 0; i < chan->msg_count; i++) {
-        slot_t *s = get_slot(chan, i);
-        if (cas(&s->occupied, FREE, INFLUX)) {
-            memcpy(&s->data, msg, chan->msg_size);
-            int result = cas(&s->occupied, INFLUX, USED);
-            assert(result == 1);
-            return 0;
-        }
-    }
-    return -1;
+    return chan->slots.base + (chan->message_size * slot);
 }
 
-static int try_recv(channel_p chan, void *msg) {
-    assert(chan != NULL);
-    assert(chan->type == CHANNEL_TYPE_RECV);
-
-    for (int i = 0; i < chan->msg_count; i++) {
-        slot_t *s = get_slot(chan, i);
-        if (cas(&s->occupied, USED, INFLUX)) {
-            memcpy(msg, &s->data, chan->msg_size);
-            int result = cas(&s->occupied, INFLUX, FREE);
-            assert(result == 1);
-            return 0;
-        }
-    }
-    return -1;
+int write_chan_unread(write_channel_p chan) {
+    return (*chan->num_written - *chan->num_read);
 }
 
-int channel_send(channel_p chan, void *msg) {
-    if (chan == NULL) {
+int read_chan_unread(read_channel_p chan) {
+    return (*chan->num_written - *chan->num_read);
+}
+
+int channel_try_send(write_channel_p chan, void *buf) {
+    int slot;
+
+    if (chan == NULL)
         return CHANNEL_INVALID;
+
+    if (!chan->allow_overwrites &&
+	(write_chan_unread(chan) == chan->ch.num_slots)) {
+	return CHANNEL_FULL;
     }
 
-    if (chan->type != CHANNEL_TYPE_SEND) {
-        return CHANNEL_WRONG_TYPE;
-    }
+    slot = (*chan->last_written + 1) % chan->ch.num_slots;
 
-    while (try_send(chan, msg) != 0);
-    return CHANNEL_OK;
-}
+    // Copy the message into the slot.
+    memcpy(channel_slot_ptr(&(chan->ch), slot), buf, chan->ch.message_size);
 
-int channel_recv(channel_p chan, void *msg) {
-    if (chan == NULL) {
-        return CHANNEL_INVALID;
-    }
-
-    if (chan->type != CHANNEL_TYPE_RECV) {
-        return CHANNEL_WRONG_TYPE;
-    }
-
-    while (try_recv(chan, msg) != 0);
-    return CHANNEL_OK;
-}
-
-int channel_try_send(channel_p chan, void *msg) {
-    if (chan == NULL) {
-        return CHANNEL_INVALID;
-    }
-
-    if (chan->type != CHANNEL_TYPE_SEND) {
-        return CHANNEL_WRONG_TYPE;
-    }
-
-    if (try_send(chan, msg) != 0) {
-        return CHANNEL_FULL;
-    }
+    *chan->last_written = slot;
+    (*chan->num_written)++;
 
     return CHANNEL_OK;
 }
 
-int channel_try_recv(channel_p chan, void *msg) {
-    if (chan == NULL) {
+int channel_can_send(write_channel_p chan) {
+    return (chan->allow_overwrites ||
+	    (write_chan_unread(chan) < chan->ch.num_slots));
+}
+
+int channel_can_recv(read_channel_p chan) {
+    return (read_chan_unread(chan) > 0);
+}
+
+int channel_try_recv(read_channel_p chan, void *buf) {
+    int slot;
+
+    if (chan == NULL)
         return CHANNEL_INVALID;
+
+    if (read_chan_unread(chan) > chan->ch.num_slots) {
+	// In this case, we've fallen behind by more than the buffer
+	// size.  We "catch up" by resetting our num_read and
+	// last_read counters so that the next read will be the most
+	// recently written message, if any.
+	(*chan->num_read) = (*chan->num_written);
+	(*chan->last_read) = (*chan->last_written);
     }
 
-    if (chan->type != CHANNEL_TYPE_RECV) {
-        return CHANNEL_WRONG_TYPE;
-    }
+    if (read_chan_unread(chan) == 0)
+	return CHANNEL_EMPTY;
 
-    if (try_recv(chan, msg) != 0) {
-        return CHANNEL_EMPTY;
-    }
+    slot = (*chan->last_read + 1) % chan->ch.num_slots;
+
+    // Copy the message from the slot.
+    memcpy(buf, channel_slot_ptr(&(chan->ch), slot), chan->ch.message_size);
+
+    *chan->last_read = slot;
+    (*chan->num_read)++;
 
     return CHANNEL_OK;
+}
+
+int channel_send(write_channel_p chan, void *buf) {
+    int result;
+    dprintf("channel_send: starting send on chan\n");
+    while ((result = channel_try_send(chan, buf)) == CHANNEL_FULL) {}
+    dprintf("channel_send: done, result %d\n", result);
+    return result;
+}
+
+int channel_recv(read_channel_p chan, void *buf) {
+    int result;
+    dprintf("channel_recv: starting recv on chan\n");
+    while ((result = channel_try_recv(chan, buf)) == CHANNEL_EMPTY) {}
+    dprintf("channel_recv: done, result %d\n", result);
+    return result;
 }

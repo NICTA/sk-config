@@ -8,9 +8,8 @@
 # @TAG(NICTA_BSD)
 #
 
-libs-$(CONFIG_LIB_SK) += libsk
-ifdef CONFIG_DEBUG_BUILD
-libsk: $(libc)
-else
-libsk: libskc
-endif
+config LIB_SK
+    bool "Runtime library for the SK environment"
+    default y
+    help
+        Provides the channels API for the separation kernel environment.
