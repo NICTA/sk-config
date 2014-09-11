@@ -13,15 +13,7 @@
 /* Cell entry point. */
 .global _start
 _start:
-    /* Assume we have a stack that looks like:
-     *
-     *  _sk_stack:
-     *  .space 4096  <-- guard
-     *  .space 4096  <-- stack
-     *  .space 4096  <-- guard
-     *
-     */
-    ldr     sp, =_sk_stack + 4096 * 2
+    /* sp already set correctly in the capdl spec */
 
     /* Call main. */
     bl      main
@@ -31,15 +23,3 @@ _start:
      */
 1:  b       1b
 
-/*
- * Symbols required for libgcc.
- */
-.global raise
-.global __aeabi_unwind_cpp_pr0
-.global __aeabi_unwind_cpp_pr1
-.global __aeabi_unwind_cpp_pr2
-raise:
-__aeabi_unwind_cpp_pr0:
-__aeabi_unwind_cpp_pr1:
-__aeabi_unwind_cpp_pr2:
-    b       raise

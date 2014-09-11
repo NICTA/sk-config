@@ -13,15 +13,10 @@
 /* Cell entry point. */
 .global _start
 _start:
-    /* Assume we have a stack that looks like:
-     *
-     *  _sk_stack:
-     *  .space 4096  <-- guard
-     *  .space 4096  <-- stack
-     *  .space 4096  <-- guard
-     *
-     */
-    leal    _sk_stack + 4096 * 2, %esp
+    /* esp already set correctly in the capdl spec */
+
+    /* pretend to push argv and argc onto the stack before calling main */
+    sub     $0x10, %esp
 
     /* Call main. */
     call    main
