@@ -15,6 +15,7 @@ import Data.String.Utils (join, replace) -- MissingH
 import System.Console.GetOpt
 import System.Environment (getArgs, getProgName)
 import System.IO
+import System.Exit
 import System.IO.Unsafe (unsafePerformIO)
 import Data.List (elemIndex)
 import Data.Maybe (fromJust)
@@ -40,6 +41,7 @@ data Options
     | Output { opt_output :: String }
     | SelectedCell { opt_cell :: String }
     | Tick { opt_tick :: Integer }
+    | PrintNumDomains
     deriving (Eq)
 
 options :: [OptDescr Options]
@@ -53,6 +55,7 @@ options =
     , Option ['o'] ["output"] (ReqArg (\a -> Output a) "ELEMENT")    "write generated artefact ELEMENT (\"capdl\", \"config\", \"header\" or \"source\")"
     , Option ['t'] ["tick"]   (ReqArg (\a -> Tick $ read a) "FREQUENCY") "Time slices per second (only relevant for scheduler configuration)"
     , Option ['x'] ["xml"]    (ReqArg (\a -> InputXML a) "FILE")     "read FILE as the input specification"
+    , Option ['p'] ["print-num-domains"] (NoArg PrintNumDomains)     "print the number of domains for the input specification and exit"
     ]
 
 -- |Prints command line usage information.
@@ -251,6 +254,9 @@ main = do
             then debugPutStrLn debug ("Warning: cell " ++ cell_name c ++ " has two shared memory regions with the same symbol")
             else return ())
         cells
+
+    when (PrintNumDomains `elem` opts)
+      (putStrLn (show (length cells)) >> exitSuccess)
 
     -- Are we producing CapDL, C source or a C header?
     let output = case filter (\x -> case x of Output _ -> True; _ -> False) opts of
